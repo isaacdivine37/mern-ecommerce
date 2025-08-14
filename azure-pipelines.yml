@@ -2,7 +2,7 @@ trigger:
   - main
 
 pool:
-  vmImage: 'ubuntu-latest'
+  isaac
 
 variables:
   NODE_VERSION: '18.x'
@@ -29,13 +29,13 @@ steps:
   # Deploy Backend
   - task: AzureWebApp@1
     inputs:
-      azureSubscription: '<Your-Service-Connection>'
+      azureSubscription: 'mern-ecommerce application'
       appName: 'mern-ecommerce-backend'
       package: '$(System.DefaultWorkingDirectory)/backend'
 
   # Deploy Frontend
   - task: AzureWebApp@1
     inputs:
-      azureSubscription: '<Your-Service-Connection>'
+      azureSubscription: 'mern-ecommerce application'
       appName: 'mern-ecommerce-frontend'
       package: '$(System.DefaultWorkingDirectory)/frontend/build'
