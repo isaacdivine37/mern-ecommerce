@@ -2,84 +2,47 @@ trigger:
   - main
 
 pool:
-  name: 'Default'  # Fixed pool syntax
+  name: 'Default'
 
 variables:
   NODE_VERSION: '18.x'
 
 steps:
-  # Verify Node.js is available
-  - script: |
-      echo "Checking Node.js..."
-      node --version
-      npm --version
-      echo "Current directory: %CD%"
-      dir
-    displayName: "Check Node.js and Environment"
+  - script: node --version
+    displayName: "Check local Node.js version"
 
-  # Build Server (Backend) with better error handling
+  # Build Server (Backend) - Smart build detection
   - script: |
-      echo "Starting server build..."
-      if exist server (
-        echo "Server directory found, entering..."
-        pushd server
-        echo "Current directory: %CD%"
-        dir
-        if exist package.json (
-          echo "Installing server dependencies..."
-          npm install
-          echo "Running server build..."
-          npm run build 2>nul || echo "No build script found - that's okay"
-        ) else (
-          echo "No package.json found in server directory"
-        )
-        popd
+      cd server
+      npm install
+      
+      REM Check if build script exists in package.json
+      findstr /C:"\"build\"" package.json >nul 2>&1
+      if errorlevel 1 (
+        echo "No build script found in package.json - skipping build step"
       ) else (
-        echo "Server directory not found in: %CD%"
-        echo "Available directories:"
-        dir /b
-        exit /b 1
+        echo "Build script found - running npm run build"
+        npm run build
       )
     displayName: 'Build Server (Backend)'
 
-  # Build Client (Frontend) with better error handling
+  # Build Client (Frontend)
   - script: |
-      echo "Starting client build..."
-      if exist client (
-        echo "Client directory found, entering..."
-        pushd client
-        echo "Current directory: %CD%"
-        dir
-        if exist package.json (
-          echo "Installing client dependencies..."
-          npm install
-          echo "Running client build..."
-          npm run build
-        ) else (
-          echo "No package.json found in client directory"
-          exit /b 1
-        )
-        popd
-      ) else (
-        echo "Client directory not found in: %CD%"
-        echo "Available directories:"
-        dir /b
-        exit /b 1
-      )
+      cd client
+      npm install
+      npm run build
     displayName: 'Build Client (Frontend)'
 
-  # Deploy Server (Backend)
+  # Deploy Server
   - task: AzureWebApp@1
     inputs:
       azureSubscription: 'mern-ecommerce application'
       appName: 'mern-ecommerce-backend'
       package: '$(System.DefaultWorkingDirectory)/server'
-    displayName: 'Deploy Server (Backend)'
 
-  # Deploy Client (Frontend)
+  # Deploy Client
   - task: AzureWebApp@1
     inputs:
       azureSubscription: 'mern-ecommerce application'
       appName: 'mern-ecommerce-frontend'
       package: '$(System.DefaultWorkingDirectory)/client/build'
-    displayName: 'Deploy Client (Frontend)'
