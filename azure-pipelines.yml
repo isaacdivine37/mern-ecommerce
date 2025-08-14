@@ -4,96 +4,86 @@ trigger:
 pool:
   name: 'Default'
 
-variables:
-  NODE_VERSION: '18.x'
-
 steps:
   - script: node --version
     displayName: "Check Node.js version"
 
-  # Build Server (Backend)
+  # Server build (keep this the same since it's working)
   - script: |
       cd server
       npm install
       npm run build || echo "No build step for server"
-    displayName: 'Build Server (Backend)'
+    displayName: 'Build Server'
     continueOnError: true
 
-  # Build Client (Frontend) with debugging
+  # Focus on client build with maximum debugging
   - script: |
+      echo "====== CLIENT BUILD DIAGNOSIS ======"
       cd client
-      echo "Installing client dependencies..."
-      npm install
-      echo "Contents of client directory before build:"
+      
+      echo "Step 1: Check what's in client directory"
       dir
-      echo "Checking package.json for build script:"
-      type package.json | findstr build
-      echo "Running client build..."
-      npm run build
-      echo "Contents of client directory after build:"
-      dir
-      echo "Looking for common build output directories:"
-      if exist build (
-        echo "Found 'build' directory:"
-        dir build
+      
+      echo "Step 2: Check package.json"
+      if exist package.json (
+        type package.json
       ) else (
-        echo "'build' directory not found"
-      )
-      if exist dist (
-        echo "Found 'dist' directory:"
-        dir dist
-      ) else (
-        echo "'dist' directory not found"
-      )
-      if exist public (
-        echo "Found 'public' directory:"
-        dir public
-      ) else (
-        echo "'public' directory not found"
-      )
-    displayName: 'Build and Debug Client'
-
-  # List all directories to see what was created
-  - script: |
-      echo "Complete client directory structure after build:"
-      cd client
-      tree /f
-    displayName: 'Show Client Directory Tree'
-    continueOnError: true
-
-  # Check and set build output path
-  - script: |
-      cd client
-      if exist build (
-        echo "Build directory found - will use client/build for deployment"
-        echo ##vso[task.setvariable variable=CLIENT_DEPLOY_PATH]$(System.DefaultWorkingDirectory)/client/build
-        echo ##vso[task.setvariable variable=BUILD_FOUND]true
-      ) else if exist dist (
-        echo "Dist directory found - will use client/dist for deployment"
-        echo ##vso[task.setvariable variable=CLIENT_DEPLOY_PATH]$(System.DefaultWorkingDirectory)/client/dist
-        echo ##vso[task.setvariable variable=BUILD_FOUND]true
-      ) else (
-        echo "No build output directory found!"
-        echo ##vso[task.setvariable variable=BUILD_FOUND]false
+        echo "ERROR: No package.json found!"
         exit /b 1
       )
-    displayName: 'Determine Deploy Path'
-    continueOnError: true
+      
+      echo "Step 3: Install dependencies"
+      npm install
+      
+      echo "Step 4: Show available scripts"
+      npm run
+      
+      echo "Step 5: Try to build (showing all output)"
+      npm run build 2>&1 && (
+        echo "BUILD SUCCESS!"
+        echo "Checking what was created:"
+        dir
+      ) || (
+        echo "BUILD FAILED - that's why no build directory exists"
+        echo "Current directory after failed build:"
+        dir
+      )
+      
+    displayName: 'Client Build Diagnosis'
 
-  # Deploy Server
+  # Deploy server (this worked before)
   - task: AzureWebApp@1
     inputs:
       azureSubscription: 'mern-ecommerce application'
       appName: 'mern-ecommerce-backend'
       package: '$(System.DefaultWorkingDirectory)/server'
-    displayName: 'Deploy Server (Backend)'
+    displayName: 'Deploy Server'
     continueOnError: true
 
-  # Deploy Client only if build was found
+  # Try to deploy client - check multiple possible locations
+  - script: |
+      cd client
+      echo "Looking for build output..."
+      if exist build (
+        echo "Found build directory - using that"
+        echo ##vso[task.setvariable variable=CLIENT_PATH]$(System.DefaultWorkingDirectory)/client/build
+        echo ##vso[task.setvariable variable=DEPLOY_CLIENT]true
+      ) else if exist dist (
+        echo "Found dist directory - using that (Vite build)"
+        echo ##vso[task.setvariable variable=CLIENT_PATH]$(System.DefaultWorkingDirectory)/client/dist
+        echo ##vso[task.setvariable variable=DEPLOY_CLIENT]true
+      ) else (
+        echo "No build directory found - will deploy source code"
+        echo ##vso[task.setvariable variable=CLIENT_PATH]$(System.DefaultWorkingDirectory)/client
+        echo ##vso[task.setvariable variable=DEPLOY_CLIENT]true
+      )
+    displayName: 'Determine Client Deploy Path'
+
+  # Deploy client
   - task: AzureWebApp@1
     inputs:
       azureSubscription: 'mern-ecommerce application'
       appName: 'mern-ecommerce-frontend'
-      package: '$(CLIENT_DEPLOY_PATH)'
-    displayName: 'Deploy Client (Frontend)'
-    condition: and(succeeded(), eq(variables['BUILD_FOUND'], 'true'))
+      package: '$(CLIENT_PATH)'
+    displayName: 'Deploy Client'
+    condition: eq(variables['DEPLOY_CLIENT'], 'true')
