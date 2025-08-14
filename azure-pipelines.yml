@@ -2,8 +2,7 @@ trigger:
   - main
 
 pool:
-  isaac
-
+  default
 variables:
   NODE_VERSION: '18.x'
 
