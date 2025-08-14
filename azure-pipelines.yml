@@ -7,9 +7,8 @@ variables:
   NODE_VERSION: '18.x'
 
 steps:
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '$(NODE_VERSION)'
+  - script: node --version
+    displayName: "Check local Node.js version"
 
   # Build Backend
   - script: |
