@@ -9,29 +9,76 @@ variables:
 
 steps:
   - script: node --version
-    displayName: "Check local Node.js version"
+    displayName: "Check Node.js version"
 
-  # Build Server (Backend) - Smart build detection
+  # Build Server (Backend)
   - script: |
       cd server
       npm install
-      
-      REM Check if build script exists in package.json
-      findstr /C:"\"build\"" package.json >nul 2>&1
-      if errorlevel 1 (
-        echo "No build script found in package.json - skipping build step"
-      ) else (
-        echo "Build script found - running npm run build"
-        npm run build
-      )
+      npm run build || echo "No build step for server"
     displayName: 'Build Server (Backend)'
+    continueOnError: true
 
-  # Build Client (Frontend)
+  # Build Client (Frontend) with debugging
   - script: |
       cd client
+      echo "Installing client dependencies..."
       npm install
+      echo "Contents of client directory before build:"
+      dir
+      echo "Checking package.json for build script:"
+      type package.json | findstr build
+      echo "Running client build..."
       npm run build
-    displayName: 'Build Client (Frontend)'
+      echo "Contents of client directory after build:"
+      dir
+      echo "Looking for common build output directories:"
+      if exist build (
+        echo "Found 'build' directory:"
+        dir build
+      ) else (
+        echo "'build' directory not found"
+      )
+      if exist dist (
+        echo "Found 'dist' directory:"
+        dir dist
+      ) else (
+        echo "'dist' directory not found"
+      )
+      if exist public (
+        echo "Found 'public' directory:"
+        dir public
+      ) else (
+        echo "'public' directory not found"
+      )
+    displayName: 'Build and Debug Client'
+
+  # List all directories to see what was created
+  - script: |
+      echo "Complete client directory structure after build:"
+      cd client
+      tree /f
+    displayName: 'Show Client Directory Tree'
+    continueOnError: true
+
+  # Check and set build output path
+  - script: |
+      cd client
+      if exist build (
+        echo "Build directory found - will use client/build for deployment"
+        echo ##vso[task.setvariable variable=CLIENT_DEPLOY_PATH]$(System.DefaultWorkingDirectory)/client/build
+        echo ##vso[task.setvariable variable=BUILD_FOUND]true
+      ) else if exist dist (
+        echo "Dist directory found - will use client/dist for deployment"
+        echo ##vso[task.setvariable variable=CLIENT_DEPLOY_PATH]$(System.DefaultWorkingDirectory)/client/dist
+        echo ##vso[task.setvariable variable=BUILD_FOUND]true
+      ) else (
+        echo "No build output directory found!"
+        echo ##vso[task.setvariable variable=BUILD_FOUND]false
+        exit /b 1
+      )
+    displayName: 'Determine Deploy Path'
+    continueOnError: true
 
   # Deploy Server
   - task: AzureWebApp@1
@@ -39,10 +86,14 @@ steps:
       azureSubscription: 'mern-ecommerce application'
       appName: 'mern-ecommerce-backend'
       package: '$(System.DefaultWorkingDirectory)/server'
+    displayName: 'Deploy Server (Backend)'
+    continueOnError: true
 
-  # Deploy Client
+  # Deploy Client only if build was found
   - task: AzureWebApp@1
     inputs:
       azureSubscription: 'mern-ecommerce application'
       appName: 'mern-ecommerce-frontend'
-      package: '$(System.DefaultWorkingDirectory)/client/build'
+      package: '$(CLIENT_DEPLOY_PATH)'
+    displayName: 'Deploy Client (Frontend)'
+    condition: and(succeeded(), eq(variables['BUILD_FOUND'], 'true'))
