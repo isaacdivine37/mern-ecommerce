@@ -2,26 +2,70 @@ trigger:
   - main
 
 pool:
-  default
+  name: 'Default'  # Fixed pool syntax
+
 variables:
   NODE_VERSION: '18.x'
 
 steps:
-  - script: node --version
-    displayName: "Check local Node.js version"
-
-  # Build Backend
+  # Verify Node.js is available
   - script: |
-      cd backend
-      npm install
-      npm run build || echo "No build step for backend"
+      echo "Checking Node.js..."
+      node --version
+      npm --version
+      echo "Current directory: %CD%"
+      dir
+    displayName: "Check Node.js and Environment"
+
+  # Build Backend with better error handling
+  - script: |
+      echo "Starting backend build..."
+      if exist backend (
+        echo "Backend directory found, entering..."
+        pushd backend
+        echo "Current directory: %CD%"
+        dir
+        if exist package.json (
+          echo "Installing backend dependencies..."
+          npm install
+          echo "Running backend build..."
+          npm run build 2>nul || echo "No build script found - that's okay"
+        ) else (
+          echo "No package.json found in backend directory"
+        )
+        popd
+      ) else (
+        echo "Backend directory not found in: %CD%"
+        echo "Available directories:"
+        dir /b
+        exit /b 1
+      )
     displayName: 'Build Backend'
 
-  # Build Frontend
+  # Build Frontend with better error handling
   - script: |
-      cd frontend
-      npm install
-      npm run build
+      echo "Starting frontend build..."
+      if exist frontend (
+        echo "Frontend directory found, entering..."
+        pushd frontend
+        echo "Current directory: %CD%"
+        dir
+        if exist package.json (
+          echo "Installing frontend dependencies..."
+          npm install
+          echo "Running frontend build..."
+          npm run build
+        ) else (
+          echo "No package.json found in frontend directory"
+          exit /b 1
+        )
+        popd
+      ) else (
+        echo "Frontend directory not found in: %CD%"
+        echo "Available directories:"
+        dir /b
+        exit /b 1
+      )
     displayName: 'Build Frontend'
 
   # Deploy Backend
@@ -30,6 +74,7 @@ steps:
       azureSubscription: 'mern-ecommerce application'
       appName: 'mern-ecommerce-backend'
       package: '$(System.DefaultWorkingDirectory)/backend'
+    displayName: 'Deploy Backend'
 
   # Deploy Frontend
   - task: AzureWebApp@1
@@ -37,3 +82,4 @@ steps:
       azureSubscription: 'mern-ecommerce application'
       appName: 'mern-ecommerce-frontend'
       package: '$(System.DefaultWorkingDirectory)/frontend/build'
+    displayName: 'Deploy Frontend'
